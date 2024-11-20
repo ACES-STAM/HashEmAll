@@ -10,16 +10,16 @@ pub struct ReinforcedConcrete {
     pub alphas: [FieldElement; 2],
     pub betas: [FieldElement; 2],
     pub round_constants: Vec<[FieldElement; 3]>,
-    pub s_values: Vec<BigUint>, // used for decomposition and composition in the bar function
+    pub s_values: Vec<BigUint>,
     pub sbox_threshold: FieldElement,
     pub sbox_u256: Vec<FieldElement>,
-    pub pre_rounds:i32,
-    pub total_rounds:u32
+    pub pre_rounds: i32,
+    pub total_rounds: u32
 }
 
 impl ReinforcedConcrete {
     pub fn new() -> Self {
-        let p_value_str = "52435875175126190479447740508185965837690552500527637822603658699938581184513";
+        let p_value_str = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
         let p_value = BigUint::from_str(p_value_str).expect("Failed to parse the number");
         let field = Field::new(p_value.clone());
 
@@ -79,12 +79,12 @@ impl ReinforcedConcrete {
         ];
 
         let s_values = vec![
-                BigUint::from_str("12345678901234567890").unwrap(),
-                BigUint::from_str("98765432109876543210").unwrap(),
-                BigUint::from_str("11223344556677889900").unwrap(),
-                BigUint::from_str("99887766554433221100").unwrap(),
-                BigUint::from_str("31415926535897932384").unwrap(),
-            ];
+            BigUint::from_str("12345678901234567890").unwrap(),
+            BigUint::from_str("98765432109876543210").unwrap(),
+            BigUint::from_str("11223344556677889900").unwrap(),
+            BigUint::from_str("99887766554433221100").unwrap(),
+            BigUint::from_str("31415926535897932384").unwrap(),
+        ];
         let pre_rounds = 3;
         let total_rounds = 7;
 
@@ -105,6 +105,7 @@ impl ReinforcedConcrete {
     }
 
     pub fn bricks(&self, state: &[FieldElement; 3]) -> [FieldElement; 3] {
+        println!("Bricks - Input State: {:?}", state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         let mut new_state: [FieldElement; 3] = [
             self.field.zero(),
             self.field.zero(),
@@ -136,10 +137,12 @@ impl ReinforcedConcrete {
         term_three = term_three.multiply(&state[2]);
         new_state[2] = term_three;
 
+        println!("Bricks - Output State: {:?}", new_state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         new_state
     }
 
     pub fn concrete(&self, state: &[FieldElement; 3], round_index: usize) -> [FieldElement; 3] {
+        println!("Concrete - Input State: {:?}, Round Index: {}", state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>(), round_index);
         let mds_matrix = [
             [BigUint::from(2u32), BigUint::from(1u32), BigUint::from(1u32)],
             [BigUint::from(1u32), BigUint::from(2u32), BigUint::from(1u32)],
@@ -165,11 +168,12 @@ impl ReinforcedConcrete {
         for i in 0..3 {
             new_state[i] = new_state[i].add(&round_constant[i]);
         }
+        println!("Concrete - Output State: {:?}", new_state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         new_state
     }
 
-     // Decomposition function: Decomposes x ∈ F_p into smaller digits (FieldElements)
-     pub fn decomp(&self, x: &FieldElement) -> Vec<FieldElement> {
+    pub fn decomp(&self, x: &FieldElement) -> Vec<FieldElement> {
+        println!("Decomp - Input: {:?}", x.to_biguint());
         let mut digits = vec![];
         let mut remainder = x.to_biguint(); // Convert FieldElement to BigUint for calculation
 
@@ -180,61 +184,62 @@ impl ReinforcedConcrete {
         }
 
         digits.reverse();
+        println!("Decomp - Output Digits: {:?}", digits.iter().map(|d| d.to_biguint()).collect::<Vec<_>>());
         digits
     }
 
-    // Composition function: Reconstructs the element in F_p from smaller digits (FieldElements)
     pub fn comp(&self, digits: Vec<FieldElement>) -> FieldElement {
+        println!("Comp - Input Digits: {:?}", digits.iter().map(|d| d.to_biguint()).collect::<Vec<_>>());
         let mut result = self.field.zero();
         let mut product = FieldElement::new(BigUint::one(), self.field.clone());
-
+    
         for (i, digit) in digits.iter().enumerate() {
-            // Convert product and digit_biguint to FieldElement and perform field multiplication
+            // Calculate the term and add to result
             let term = digit.multiply(&product);
-            result = result.add(&term);  // Use field addition
-
+            result = result.add(&term);
+    
+            // Update the product if there are more values to multiply
             if i < self.s_values.len() - 1 {
-                // Multiply product by the next s_value, converting it to FieldElement
                 let next_s_value = FieldElement::new(self.s_values[i + 1].clone(), self.field.clone());
                 product = product.multiply(&next_s_value);
             }
         }
-
-        // Return the result modulo p_value as a FieldElement
+    
+        println!("Comp - Final Output: {:?}", result.to_biguint());
         result
     }
+    
 
     pub fn sbox(&self, x: &FieldElement) -> FieldElement {
-        // Convert the FieldElement to BigUint for comparison and possible substitution
+        println!("SBox - Input: {:?}", x.to_biguint());
         let x_biguint = x.to_biguint();
-
-        // Threshold sbox_threshold is expected to be a BigUint representing the maximum for substitution
-        let vu_256 = self.sbox_threshold.clone();
-        let vu_256_biguint = vu_256.to_biguint();
+        let vu_256_biguint = self.sbox_threshold.to_biguint();
 
         if x_biguint < vu_256_biguint {
-            // If the value is smaller than the threshold, apply the SBox substitution
             let index = x_biguint.to_u32().expect("x must fit into u32 for indexing") as usize;
-            let substitution = &self.sbox_u256[index]; // Access the pre-defined SBox array
+            let substitution = &self.sbox_u256[index];
+            println!("SBox - Output Substitution: {:?}", substitution.to_biguint());
             substitution.clone()
         } else {
-            // Return the original FieldElement if no substitution is made
+            println!("SBox - Output (No Substitution): {:?}", x.to_biguint());
             x.clone()
         }
     }
 
-    // Bar function: Applies Decomp, SBox, and Comp
     pub fn bar(&self, x: &FieldElement) -> FieldElement {
+        println!("Bar - Input: {:?}", x.to_biguint());
         let digits = self.decomp(x);
         let transformed_digits: Vec<FieldElement> = digits
             .into_iter()
             .map(|digit| self.sbox(&digit))
             .collect();
-        self.comp(transformed_digits)
+        let result = self.comp(transformed_digits);
+        println!("Bar - Output: {:?}", result.to_biguint());
+        result
     }
 
-    // Bars function: Applies Bar to each element in the state
     pub fn bars(&self, state: &[FieldElement; 3]) -> [FieldElement; 3] {
+        println!("Bars - Input State: {:?}", state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         let mut new_state: [FieldElement; 3] = [
             self.field.zero(),
             self.field.zero(),
@@ -243,36 +248,37 @@ impl ReinforcedConcrete {
         for i in 0..3 {
             new_state[i] = self.bar(&state[i]);
         }
+        println!("Bars - Output State: {:?}", new_state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         new_state
     }
 
     pub fn permutation(&self, input: &[FieldElement; 3]) -> [FieldElement; 3] {
+        println!("Permutation - Input: {:?}", input.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         let mut current_state = input.clone();
-        self.concrete(&current_state, 0);
+        current_state = self.concrete(&current_state, 0);
 
         for i in 1..=self.pre_rounds as usize {
             current_state = self.bricks(&current_state);
-            self.concrete(&current_state, i);
+            current_state = self.concrete(&current_state, i);
         }
 
-        // Apply the bar round
         current_state = self.bars(&current_state);
-        self.concrete(&current_state, (self.pre_rounds + 1) as usize);
+        current_state = self.concrete(&current_state, (self.pre_rounds + 1) as usize);
 
-        
-    
-        // Apply final rounds
         for i in (self.pre_rounds + 2) as usize..=self.total_rounds as usize {
             current_state = self.bricks(&current_state);
-            self.concrete(&current_state, i);
+            current_state = self.concrete(&current_state, i);
         }
 
+        println!("Permutation - Output: {:?}", current_state.iter().map(|x| x.to_biguint()).collect::<Vec<_>>());
         current_state
     }
 
     pub fn hash_function(&self, el1: &FieldElement, el2: &FieldElement) -> FieldElement {
+        println!("Hash Function - Inputs: {:?}, {:?}", el1.to_biguint(), el2.to_biguint());
         let mut input: [FieldElement; 3] = [el1.clone(), el2.clone(), self.field.zero()];
         input = self.permutation(&input);
+        println!("Hash Function - Output: {:?}", input[0].to_biguint());
         input[0].clone()
     }
 }
